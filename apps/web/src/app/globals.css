@@ -729,6 +729,183 @@ button {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Home motion pass
+   ---------------------------------------------------------------------------
+   Accents that carry the Golden Orbit device down the home page. Each one is
+   decorative or has a static equivalent: no price, product or navigation control
+   depends on any of it, and the reduced-motion branch keeps every word and link
+   in place. Colours are literal values because the theme variables are only
+   emitted when a utility references them.
+--------------------------------------------------------------------------- */
+
+@keyframes dx-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dx-orbit-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* Two identical copies sit side by side, so moving half the track loops cleanly. */
+@keyframes dx-marquee {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* Words fill in from muted to full ink. Colour, not opacity, because this is text. */
+@keyframes dx-ink {
+  from {
+    color: #68635e;
+  }
+
+  to {
+    color: #151515;
+  }
+}
+
+/* Rule beside an eyebrow. Static unless the block is revealed on scroll. */
+.dx-rule {
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dx-orbit-spin {
+    animation: dx-orbit-spin 28s linear infinite;
+  }
+
+  .dx-orbit-spin-reverse {
+    animation: dx-orbit-spin-reverse 44s linear infinite;
+  }
+
+  .dx-marquee-track {
+    animation: dx-marquee 40s linear infinite;
+  }
+
+  .dx-marquee:hover .dx-marquee-track {
+    animation-play-state: paused;
+  }
+
+  .dx-reveal .dx-rule {
+    transform: scaleX(0);
+    transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1) 0.15s;
+  }
+
+  .dx-reveal[data-in="true"] .dx-rule {
+    transform: scaleX(1);
+  }
+}
+
+/*
+  Scroll-linked ink for the expertise statement. The heading declares one named
+  timeline and every word shares it, each over its own slice of the cover range,
+  so the sentence fills in left to right as it rises through the viewport. Browsers
+  without scroll-driven animations keep the statement at full ink from the start.
+*/
+@supports (animation-timeline: view()) and (animation-range: cover) {
+  @media (prefers-reduced-motion: no-preference) {
+    .dx-statement {
+      view-timeline: --dx-statement block;
+    }
+
+    .dx-ink-word {
+      animation: dx-ink linear both;
+      animation-timeline: --dx-statement;
+      animation-range: cover var(--dx-ink-start) cover var(--dx-ink-end);
+    }
+  }
+}
+
+/*
+  Brand hover curtain. Only a fine pointer gets the floating frame; touch and
+  keyboard-only readers get the same list of links with the arrow and the name.
+  The frame follows the cursor through two custom properties set on the stage,
+  so each move repaints one transform rather than re-rendering the list.
+*/
+.dx-brand-stage {
+  --bc-x: 0px;
+  --bc-y: 0px;
+}
+
+.dx-brand-row {
+  transition: color 0.3s ease;
+}
+
+.dx-brand-arrow {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dx-brand-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: none;
+  width: 16rem;
+  height: 20rem;
+  pointer-events: none;
+  visibility: hidden;
+  transform: translate3d(var(--bc-x), var(--bc-y), 0);
+  transition: visibility 0s linear 0.45s;
+}
+
+.dx-brand-preview[data-open="true"] {
+  visibility: visible;
+  transition: visibility 0s;
+}
+
+.dx-brand-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  box-shadow: 0 30px 60px rgb(0 0 0 / 0.45);
+}
+
+/* The photograph is wiped in from the left edge, like a curtain drawing back. */
+.dx-brand-image {
+  position: absolute;
+  inset: 0;
+  background: #f7f4ed;
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dx-brand-photo {
+  transform: scale(1.12);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dx-brand-preview[data-open="true"] .dx-brand-image {
+  clip-path: inset(0 0 0 0);
+}
+
+.dx-brand-preview[data-open="true"] .dx-brand-photo {
+  transform: scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dx-brand-row:hover {
+    color: #fecc29;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .dx-brand-preview {
+    display: block;
+  }
+
+  .dx-brand-row:hover .dx-brand-arrow,
+  .dx-brand-row:focus-visible .dx-brand-arrow {
+    transform: translate3d(0.35rem, 0, 0);
+  }
+}
+
 /* Text clipped to a line box, so `dx-line-up` slides in from below the line. */
 .dx-line-mask {
   display: block;

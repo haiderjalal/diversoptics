@@ -26,7 +26,7 @@ export function Button({
   return (
     <Component
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold tracking-[0.04em] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold tracking-[0.04em] transition-[color,background-color,transform] duration-200 ease-out motion-safe:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         tones[tone],
         className,
       )}

@@ -51,7 +51,17 @@ export function Hero() {
         aria-hidden="true"
         className="dx-hero-ring pointer-events-none absolute left-1/2 top-[11%] -z-10 aspect-square w-[min(30rem,86vw)] -translate-x-1/2 rounded-full border border-orbit-gold/25 lg:left-[53%] lg:top-[1%] lg:w-[22rem]"
       >
-        <div className="absolute inset-[9%] rounded-full border border-antique-brass/20" />
+        {/*
+          Two bodies in orbit: a gold node on the outer ring and a brass node on the
+          inner one, turning in opposite directions. Both only rotate, and the static
+          rings are the complete picture for readers who prefer reduced motion.
+        */}
+        <div className="dx-orbit-spin absolute inset-0 rounded-full">
+          <span className="absolute left-1/2 top-0 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orbit-gold shadow-[0_0_0_6px_rgb(254_204_41/0.12),0_0_22px_rgb(254_204_41/0.8)]" />
+        </div>
+        <div className="dx-orbit-spin-reverse absolute inset-[9%] rounded-full border border-antique-brass/20">
+          <span className="absolute bottom-0 left-1/2 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-antique-brass" />
+        </div>
       </div>
 
       {/* ------------------------------------------------------ z-10 headline */}

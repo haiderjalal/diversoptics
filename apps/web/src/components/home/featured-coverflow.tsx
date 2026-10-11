@@ -15,6 +15,7 @@ import {
 } from "@/features/catalog/domain/price";
 import type { ProductSummary } from "@/features/catalog/domain/types";
 
+import { ProductMediaPlaceholder } from "./product-media-placeholder";
 import { useInView } from "./use-in-view";
 
 const ADVANCE_MS = 4_200;
@@ -136,7 +137,13 @@ export function FeaturedCoverflow({
                   src={source}
                   style={{ objectPosition: focalObjectPosition(image) }}
                 />
-              ) : null}
+              ) : (
+                // Same designed placeholder as the catalog, so a card without a
+                // photograph reads as deliberate rather than as a blank frame.
+                <div className="absolute inset-0">
+                  <ProductMediaPlaceholder />
+                </div>
+              )}
 
               {/* Depth veil, so the far cards read as further away rather than merely smaller. */}
               <span

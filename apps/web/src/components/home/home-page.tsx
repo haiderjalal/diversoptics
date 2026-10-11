@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { DemoCatalogNotice } from "@/components/catalog/demo-catalog-notice";
+import { brandPreviewImage } from "@/features/catalog/domain/brand-preview";
 import type {
   CatalogBrand,
   CatalogCategory,
@@ -14,10 +15,12 @@ import {
 import { Button } from "../ui/button";
 import { Container } from "../ui/container";
 import { Reveal } from "../ui/reveal";
-import { BrandTile } from "./brand-tile";
+import { BrandCurtainList } from "./brand-curtain-list";
 import { CategoryCarousel } from "./category-carousel";
+import { CategoryMarquee } from "./category-marquee";
 import { FeaturedCoverflow } from "./featured-coverflow";
 import { Hero } from "./hero";
+import { ScrollStatement } from "./scroll-statement";
 import { SectionHeading } from "./section-heading";
 
 export function HomePage({
@@ -32,10 +35,15 @@ export function HomePage({
   products: readonly ProductSummary[];
 }) {
   const whatsappDestination = getWhatsAppDestination();
+  const brandItems = brands.slice(0, 6).map((brand) => ({
+    brand,
+    image: brandPreviewImage(brand.slug, products),
+  }));
 
   return (
     <main id="main">
       <Hero />
+      <CategoryMarquee categories={categories} />
 
       {demo ? (
         <div className="dx-atmosphere-band pt-8">
@@ -112,17 +120,9 @@ export function HomePage({
                 title="A quieter way to browse the names you know."
               />
             </Reveal>
-            <div className="mt-7 flex snap-x gap-[18px] overflow-x-auto pb-4 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
-              {brands.slice(0, 6).map((brand, index) => (
-                <Reveal
-                  className="flex flex-1"
-                  delay={index * 70}
-                  key={brand.id}
-                >
-                  <BrandTile brand={brand} />
-                </Reveal>
-              ))}
-            </div>
+            <Reveal className="mt-7 block">
+              <BrandCurtainList items={brandItems} />
+            </Reveal>
             <Reveal>
               <Link
                 className="mt-7 inline-flex min-h-11 items-center text-sm font-semibold text-orbit-gold hover:underline"
@@ -143,9 +143,10 @@ export function HomePage({
             </p>
           </Reveal>
           <Reveal delay={90}>
-            <h2 className="mt-5 max-w-[51rem] font-display text-[3.5rem] leading-[1.02] tracking-[-0.01em] sm:text-6xl">
-              See the details online. Decide with confidence in store.
-            </h2>
+            <ScrollStatement
+              className="mt-5 max-w-[51rem] font-display text-[3.5rem] leading-[1.02] tracking-[-0.01em] sm:text-6xl"
+              text="See the details online. Decide with confidence in store."
+            />
           </Reveal>
           <Reveal delay={180}>
             <p className="mt-7 max-w-[42.5rem] text-lg leading-8 text-smoke">
@@ -157,7 +158,21 @@ export function HomePage({
         </Container>
       </section>
 
-      <section className="content-auto bg-orbit-gold py-16" id="store">
+      <section
+        className="content-auto relative isolate overflow-hidden bg-orbit-gold py-16"
+        id="store"
+      >
+        {/*
+          Faint rings at the edge of the band, decoration only. They are static and
+          shown only on large screens: on narrower ones they would run behind the
+          headline, and a moving node there reads as a smudge on the letters.
+        */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-20 top-1/2 -z-10 hidden aspect-square w-[min(34rem,90vw)] -translate-y-1/2 rounded-full border border-obsidian/15 lg:block"
+        >
+          <div className="absolute inset-[12%] rounded-full border border-obsidian/10" />
+        </div>
         <Container>
           <Reveal>
             <p className="text-sm font-semibold tracking-[0.08em]">
