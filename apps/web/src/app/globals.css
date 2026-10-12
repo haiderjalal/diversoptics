@@ -297,19 +297,54 @@ button {
 }
 
 /*
-  Featured coverflow. Only transform and opacity move, so each card change is a
-  compositor job rather than a layout one — eight cards re-laying out together
-  every four seconds would not hold frame rate.
+  Featured deck. Every card moves one place per step on the same curve, so the
+  deck reads as one continuous loop rather than separate changes. Only transform,
+  opacity and the glow move, so each step is a compositor job. A card that
+  re-enters from the back is placed with no transition: that only happens at an
+  end position, where the card is hidden.
 */
 .dx-flow-card {
   transition:
-    transform 0.8s cubic-bezier(0.3, 1, 0.35, 1),
-    opacity 0.5s ease;
+    transform 1.5s cubic-bezier(0.33, 0, 0.2, 1),
+    opacity 0.6s ease,
+    box-shadow 1.5s ease;
   will-change: transform;
 }
 
 .dx-flow-veil {
   transition: opacity 0.8s ease;
+}
+
+/* Light that crosses the stage. Decorative, and only drawn when motion is allowed. */
+.dx-flow-sheen {
+  display: none;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgb(254 204 41 / 0.14) 50%,
+    transparent 100%
+  );
+}
+
+.dx-flow-progress {
+  animation: dx-cat-progress linear both;
+}
+
+@keyframes dx-flow-sheen {
+  from {
+    transform: translate3d(-110%, 0, 0) skewX(-14deg);
+  }
+
+  to {
+    transform: translate3d(260%, 0, 0) skewX(-14deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dx-flow-sheen {
+    display: block;
+    animation: dx-flow-sheen 9s linear infinite;
+  }
 }
 
 /*
