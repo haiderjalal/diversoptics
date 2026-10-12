@@ -24,11 +24,14 @@ import { ScrollStatement } from "./scroll-statement";
 import { SectionHeading } from "./section-heading";
 
 export function HomePage({
+  brandPhotoProducts,
   brands,
   categories,
   demo,
   products,
 }: {
+  /** Published products for picking each brand's hover photograph. */
+  brandPhotoProducts: readonly ProductSummary[];
   brands: readonly CatalogBrand[];
   categories: readonly CatalogCategory[];
   demo: boolean;
@@ -37,7 +40,7 @@ export function HomePage({
   const whatsappDestination = getWhatsAppDestination();
   const brandItems = brands.slice(0, 6).map((brand) => ({
     brand,
-    image: brandPreviewImage(brand.slug, products),
+    image: brandPreviewImage(brand.slug, brandPhotoProducts),
   }));
 
   return (

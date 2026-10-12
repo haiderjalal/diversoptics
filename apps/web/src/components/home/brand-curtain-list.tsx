@@ -139,6 +139,10 @@ export function BrandCurtainList({
       {items.map(({ brand, image }) => {
         const source = resolveImageUrl(image);
 
+        // A brand with no photograph gets no frame. The orbit placeholder read as an
+        // empty card, so the row stays a plain link instead.
+        if (!image || !source) return null;
+
         return (
           <div
             aria-hidden="true"
@@ -148,26 +152,14 @@ export function BrandCurtainList({
           >
             <div className="dx-brand-frame">
               <div className="dx-brand-image">
-                {image && source ? (
-                  <Image
-                    alt=""
-                    className="dx-brand-photo object-cover"
-                    fill
-                    sizes={`${PREVIEW_WIDTH}px`}
-                    src={source}
-                    style={{ objectPosition: focalObjectPosition(image) }}
-                  />
-                ) : (
-                  // No photograph for this brand yet: the designed placeholder, not
-                  // a picture borrowed from another brand.
-                  <Image
-                    alt=""
-                    className="dx-brand-photo object-contain p-12"
-                    fill
-                    sizes={`${PREVIEW_WIDTH}px`}
-                    src="/orbit/golden-orbit.svg"
-                  />
-                )}
+                <Image
+                  alt=""
+                  className="dx-brand-photo object-cover"
+                  fill
+                  sizes={`${PREVIEW_WIDTH}px`}
+                  src={source}
+                  style={{ objectPosition: focalObjectPosition(image) }}
+                />
               </div>
             </div>
           </div>

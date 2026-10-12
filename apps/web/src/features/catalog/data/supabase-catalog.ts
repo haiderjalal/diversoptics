@@ -7,6 +7,7 @@ import {
   type PublicCatalogClient,
 } from "@/lib/supabase/public";
 
+import { BRAND_PREVIEW_PRODUCT_LIMIT } from "../domain/brand-preview";
 import {
   buildCategoryTree,
   findCategoryById,
@@ -709,6 +710,22 @@ export function createSupabaseCatalogRepository(
           .order("published_at", { ascending: false, nullsFirst: false })
           .limit(8),
         "Could not load featured products",
+      );
+
+      return (data ?? []).map(mapProductSummary);
+    },
+
+    async getBrandPreviewProducts() {
+      const data = unwrap(
+        await client
+          .from("products")
+          .select(PRODUCT_SUMMARY_SELECT)
+          .eq("status", "published")
+          .is("archived_at", null)
+          .order("featured", { ascending: false })
+          .order("published_at", { ascending: false, nullsFirst: false })
+          .limit(BRAND_PREVIEW_PRODUCT_LIMIT),
+        "Could not load brand previews",
       );
 
       return (data ?? []).map(mapProductSummary);

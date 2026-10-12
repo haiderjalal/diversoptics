@@ -1,3 +1,4 @@
+import { BRAND_PREVIEW_PRODUCT_LIMIT } from "../domain/brand-preview";
 import {
   buildCategoryTree,
   collectCategoryIds,
@@ -230,6 +231,14 @@ export function createInMemoryCatalogRepository(
       return data.products
         .filter((product) => product.status === "published" && product.featured)
         .slice(0, 8)
+        .map(toSummary);
+    },
+
+    async getBrandPreviewProducts() {
+      return data.products
+        .filter((product) => product.status === "published")
+        .sort((left, right) => Number(right.featured) - Number(left.featured))
+        .slice(0, BRAND_PREVIEW_PRODUCT_LIMIT)
         .map(toSummary);
     },
 

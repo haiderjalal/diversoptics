@@ -32,6 +32,11 @@ export function cachePublicCatalogRepository(
       ["public-catalog", "brand"],
       CACHE_OPTIONS,
     ),
+    getBrandPreviewProducts: unstable_cache(
+      () => repository.getBrandPreviewProducts(),
+      ["public-catalog", "brand-preview-products"],
+      CACHE_OPTIONS,
+    ),
     getBrands: unstable_cache(
       () => repository.getBrands(),
       ["public-catalog", "brands"],

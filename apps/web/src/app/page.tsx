@@ -29,12 +29,14 @@ export const metadata: Metadata = {
 export default async function Page() {
   const repository = createCatalogRepository();
 
-  const [brands, tree, products, settings] = await Promise.all([
-    repository.getFeaturedBrands(),
-    repository.getCategoryTree(),
-    repository.getFeaturedProducts(),
-    getStoreSettings(),
-  ]);
+  const [brands, tree, products, brandPhotoProducts, settings] =
+    await Promise.all([
+      repository.getFeaturedBrands(),
+      repository.getCategoryTree(),
+      repository.getFeaturedProducts(),
+      repository.getBrandPreviewProducts(),
+      getStoreSettings(),
+    ]);
 
   return (
     <SiteShell>
@@ -47,6 +49,7 @@ export default async function Page() {
         brands={brands}
         // Only top-level categories act as the home page's entry points.
         categories={tree}
+        brandPhotoProducts={brandPhotoProducts}
         demo={isDemoCatalog()}
         products={products}
       />

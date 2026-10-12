@@ -213,6 +213,11 @@ export interface CatalogRepository {
     segments: readonly string[],
   ): Promise<CatalogCategoryNode | null>;
   getFeaturedProducts(): Promise<readonly ProductSummary[]>;
+  /**
+   * Published products for choosing one photograph per brand. Featured products
+   * come first, and the read is capped at BRAND_PREVIEW_PRODUCT_LIMIT.
+   */
+  getBrandPreviewProducts(): Promise<readonly ProductSummary[]>;
   getFeaturedBrands(): Promise<readonly CatalogBrand[]>;
   getBrands(): Promise<readonly CatalogBrand[]>;
   getBrandBySlug(slug: string): Promise<CatalogBrand | null>;
