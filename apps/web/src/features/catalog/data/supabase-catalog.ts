@@ -1,9 +1,10 @@
 import "server-only";
 
 import type { PostgrestError } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
 
 import {
-  createPublicCatalogClient,
+  getPublicCatalogClient,
   type PublicCatalogClient,
 } from "@/lib/supabase/public";
 
@@ -15,6 +16,7 @@ import {
   flattenCategories,
   type CategoryInput,
 } from "../domain/categories";
+import { deriveCatalogFacets, type FacetSourceRow } from "../domain/facets";
 import { CATALOG_PAGE_SIZE } from "../domain/filters";
 import type {
   Availability,
@@ -23,10 +25,8 @@ import type {
   CatalogCategory,
   CatalogCategoryNode,
   CatalogCollection,
-  CatalogFacet,
   CatalogImage,
   CatalogListRequest,
-  CatalogPage,
   CatalogRepository,
   EditorialPage,
   PriceMode,
@@ -36,6 +36,7 @@ import type {
   ProductVariantOption,
   PublishStatus,
 } from "../domain/types";
+import { PUBLIC_CATALOG_CACHE_TAG } from "./public-catalog-cache";
 
 const PRODUCT_SUMMARY_SELECT =
   "id, slug, name, sku, model_number, eyebrow, short_description, price, price_mode, currency, availability, status, featured, published_at, brands(name, slug), categories(id, name, slug), product_media(id, public_path, alt_text, width, height, focal_x, focal_y, is_primary, sort_order, variant_id)";
@@ -44,6 +45,9 @@ const PRODUCT_DETAIL_SELECT =
   "id, slug, name, sku, model_number, eyebrow, short_description, description, price, price_mode, currency, availability, status, featured, published_at, updated_at, brands(name, slug), categories(id, name, slug), product_media(id, public_path, alt_text, width, height, focal_x, focal_y, is_primary, sort_order, variant_id), product_variants(id, name, sku, price, price_mode, availability, sort_order), product_attribute_values(value_text, value_number, value_boolean, value_json, variant_id, attribute_definitions(key, name, value_type, sort_order))";
 
 const PAGE_SELECT = "slug, kind, title, excerpt, body_markdown";
+
+/** Facet counts need only each product's brand and availability. */
+const FACET_SELECT = "brand_id, availability, brands(name, slug)";
 
 /**
  * Public catalog reads fail loudly. A silent empty result would be
@@ -312,6 +316,42 @@ function mapVariants(
     }));
 }
 
+type ProductDetailRow = SummaryRow & {
+  description: string | null;
+  product_attribute_values: readonly AttributeValueRow[];
+  product_variants: readonly VariantRow[];
+  published_at: string | null;
+  updated_at: string;
+};
+
+/**
+ * The category path comes from the taxonomy the caller already holds, so a product
+ * page never reads the categories table on its own behalf.
+ */
+function mapProductDetail(
+  row: ProductDetailRow,
+  categoryTree: readonly CatalogCategoryNode[],
+): ProductDetail {
+  const summary = mapProductSummary(row);
+  const categoryId = row.categories?.id;
+  const categoryNode =
+    categoryId === undefined
+      ? null
+      : findCategoryById(categoryTree, String(categoryId));
+
+  return {
+    ...summary,
+    attributes: mapAttributes(row.product_attribute_values),
+    brandHref: summary.brandSlug ? brandHref(summary.brandSlug) : null,
+    categoryHref: categoryNode?.href ?? null,
+    description: row.description,
+    images: toGallery(row.product_media),
+    publishedAt: row.published_at,
+    updatedAt: row.updated_at,
+    variants: mapVariants(row.product_variants),
+  } satisfies ProductDetail;
+}
+
 /**
  * A free-text query reaches PostgREST's filter grammar, where commas, parentheses
  * and quotes are structural. Rather than escaping them the query is reduced to
@@ -360,7 +400,7 @@ type ResolvedScope = {
 export function createSupabaseCatalogRepository(
   client: PublicCatalogClient,
 ): CatalogRepository {
-  async function loadCategoryRows(): Promise<readonly CategoryInput[]> {
+  async function fetchCategoryRows(): Promise<readonly CategoryInput[]> {
     const data = unwrap(
       await client
         .from("categories")
@@ -381,24 +421,62 @@ export function createSupabaseCatalogRepository(
     }));
   }
 
+  // Product details, category pages and navigation all read the taxonomy. Cached
+  // here, a product page does not re-read it on every cache miss.
+  const loadCategoryRows = unstable_cache(
+    fetchCategoryRows,
+    ["public-catalog", "category-rows"],
+    { revalidate: 3_600, tags: [PUBLIC_CATALOG_CACHE_TAG] },
+  );
+
   async function getCategoryTree(): Promise<readonly CatalogCategoryNode[]> {
     return buildCategoryTree(await loadCategoryRows());
   }
 
-  async function resolveBrandIds(
+  /** Every brand slug a listing names is resolved in one query, not one per filter. */
+  async function resolveBrandIdBySlug(
     slugs: readonly string[],
-  ): Promise<readonly number[]> {
-    if (slugs.length === 0) return [];
+  ): Promise<ReadonlyMap<string, number>> {
+    if (slugs.length === 0) return new Map();
 
     const data = unwrap(
       await client
         .from("brands")
-        .select("id")
+        .select("id, slug")
         .in("slug", [...slugs]),
       "Could not resolve brand filters",
     );
 
-    return (data ?? []).map((row) => row.id);
+    return new Map(
+      (data ?? []).map((row): [string, number] => [row.slug, row.id]),
+    );
+  }
+
+  /** Null when the collection does not exist; an empty list when it holds nothing. */
+  async function resolveCollectionProductIds(
+    slug: string,
+  ): Promise<readonly number[] | null> {
+    const collection = unwrap(
+      await client
+        .from("collections")
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle(),
+      "Could not resolve collection",
+    );
+
+    if (!collection) return null;
+
+    const assignments = unwrap(
+      await client
+        .from("collection_products")
+        .select("product_id")
+        .eq("collection_id", collection.id)
+        .order("sort_order", { ascending: true }),
+      "Could not resolve collection products",
+    );
+
+    return (assignments ?? []).map((row) => row.product_id);
   }
 
   async function resolveScope(
@@ -419,8 +497,21 @@ export function createSupabaseCatalogRepository(
       searchTerm: filters.query ? sanitizeSearchTerm(filters.query) : "",
     };
 
+    // The brand and collection lookups do not depend on each other, so they run
+    // together rather than one after another.
+    const brandSlugs = [
+      ...new Set([request.brandSlug, ...filters.brandSlugs]),
+    ].filter((slug): slug is string => Boolean(slug));
+
+    const [brandIdBySlug, collectionProductIds] = await Promise.all([
+      resolveBrandIdBySlug(brandSlugs),
+      request.collectionSlug
+        ? resolveCollectionProductIds(request.collectionSlug)
+        : Promise.resolve(undefined),
+    ]);
+
     if (request.brandSlug) {
-      const [brandId] = await resolveBrandIds([request.brandSlug]);
+      const brandId = brandIdBySlug.get(request.brandSlug);
 
       if (brandId === undefined) return { ...scope, impossible: true };
 
@@ -428,35 +519,17 @@ export function createSupabaseCatalogRepository(
     }
 
     if (request.collectionSlug) {
-      const collection = unwrap(
-        await client
-          .from("collections")
-          .select("id")
-          .eq("slug", request.collectionSlug)
-          .maybeSingle(),
-        "Could not resolve collection",
-      );
+      if (!collectionProductIds?.length) return { ...scope, impossible: true };
 
-      if (!collection) return { ...scope, impossible: true };
-
-      const assignments = unwrap(
-        await client
-          .from("collection_products")
-          .select("product_id")
-          .eq("collection_id", collection.id)
-          .order("sort_order", { ascending: true }),
-        "Could not resolve collection products",
-      );
-
-      const productIds = (assignments ?? []).map((row) => row.product_id);
-
-      if (productIds.length === 0) return { ...scope, impossible: true };
-
-      scope.productIds = productIds;
+      scope.productIds = collectionProductIds;
     }
 
     if (filters.brandSlugs.length > 0) {
-      const brandIds = await resolveBrandIds(filters.brandSlugs);
+      const brandIds = filters.brandSlugs.flatMap((slug) => {
+        const brandId = brandIdBySlug.get(slug);
+
+        return brandId === undefined ? [] : [brandId];
+      });
 
       if (brandIds.length === 0) return { ...scope, impossible: true };
 
@@ -466,110 +539,37 @@ export function createSupabaseCatalogRepository(
     return scope;
   }
 
-  async function countBrandFacet(
-    scope: ResolvedScope,
-  ): Promise<readonly (number | null)[]> {
-    if (scope.impossible) return [];
-
-    let query = client
-      .from("products")
-      .select("brand_id")
-      .eq("status", "published")
-      .is("archived_at", null);
-
-    if (scope.categoryIds)
-      query = query.in("category_id", [...scope.categoryIds]);
-    if (scope.featuredOnly) query = query.eq("featured", true);
-    if (scope.brandId !== null) query = query.eq("brand_id", scope.brandId);
-    if (scope.productIds) query = query.in("id", [...scope.productIds]);
-    if (scope.availability.length > 0) {
-      query = query.in("availability", [...scope.availability]);
-    }
-    if (scope.searchTerm) query = query.or(searchFilter(scope.searchTerm));
-
-    const data = unwrap(await query, "Could not load brand facets");
-
-    return (data ?? []).map((row) => row.brand_id);
-  }
-
-  async function countAvailabilityFacet(
-    scope: ResolvedScope,
-  ): Promise<readonly string[]> {
-    if (scope.impossible) return [];
-
-    let query = client
-      .from("products")
-      .select("availability")
-      .eq("status", "published")
-      .is("archived_at", null);
-
-    if (scope.categoryIds)
-      query = query.in("category_id", [...scope.categoryIds]);
-    if (scope.featuredOnly) query = query.eq("featured", true);
-    if (scope.brandId !== null) query = query.eq("brand_id", scope.brandId);
-    if (scope.productIds) query = query.in("id", [...scope.productIds]);
-    if (scope.brandIds) query = query.in("brand_id", [...scope.brandIds]);
-    if (scope.searchTerm) query = query.or(searchFilter(scope.searchTerm));
-
-    const data = unwrap(await query, "Could not load availability facets");
-
-    return (data ?? []).map((row) => row.availability);
-  }
-
   /**
-   * Each facet is counted over the scope minus its own dimension, so selecting one
-   * brand still shows how many products the other brands hold.
+   * One read of the facet rows under the constraints both facets share. The brand
+   * and availability selections are applied afterwards by deriveCatalogFacets, so
+   * the same rows answer both facets instead of each facet querying the table.
    */
-  async function loadFacets(
+  async function loadFacetRows(
     scope: ResolvedScope,
-  ): Promise<CatalogPage["facets"]> {
-    const [brandIds, availabilityValues, brandRows] = await Promise.all([
-      countBrandFacet(scope),
-      countAvailabilityFacet(scope),
-      client.from("brands").select("id, name, slug"),
-    ]);
+  ): Promise<readonly FacetSourceRow[]> {
+    if (scope.impossible) return [];
 
-    const labels = new Map(
-      (unwrap(brandRows, "Could not load brand labels") ?? []).map((row) => [
-        row.id,
-        row,
-      ]),
-    );
+    let query = client
+      .from("products")
+      .select(FACET_SELECT)
+      .eq("status", "published")
+      .is("archived_at", null);
 
-    const brandCounts = new Map<number, number>();
+    if (scope.categoryIds)
+      query = query.in("category_id", [...scope.categoryIds]);
+    if (scope.featuredOnly) query = query.eq("featured", true);
+    if (scope.brandId !== null) query = query.eq("brand_id", scope.brandId);
+    if (scope.productIds) query = query.in("id", [...scope.productIds]);
+    if (scope.searchTerm) query = query.or(searchFilter(scope.searchTerm));
 
-    for (const brandId of brandIds) {
-      if (brandId === null) continue;
+    const data = unwrap(await query, "Could not load catalog facets");
 
-      brandCounts.set(brandId, (brandCounts.get(brandId) ?? 0) + 1);
-    }
-
-    const brands: CatalogFacet[] = [...brandCounts.entries()]
-      .flatMap(([id, count]) => {
-        const label = labels.get(id);
-
-        return label ? [{ count, label: label.name, slug: label.slug }] : [];
-      })
-      .sort((left, right) => left.label.localeCompare(right.label));
-
-    const availabilityCounts = new Map<Availability, number>();
-
-    for (const value of availabilityValues) {
-      const availability = toAvailability(value);
-
-      availabilityCounts.set(
-        availability,
-        (availabilityCounts.get(availability) ?? 0) + 1,
-      );
-    }
-
-    const availability: CatalogFacet[] = AVAILABILITIES.flatMap((value) => {
-      const count = availabilityCounts.get(value) ?? 0;
-
-      return count > 0 ? [{ count, label: value, slug: value }] : [];
-    });
-
-    return { availability, brands };
+    return (data ?? []).map((row) => ({
+      availability: toAvailability(row.availability),
+      brandId: row.brand_id,
+      brandName: row.brands?.name ?? null,
+      brandSlug: row.brands?.slug ?? null,
+    }));
   }
 
   async function loadBrands(
@@ -771,24 +771,36 @@ export function createSupabaseCatalogRepository(
 
       if (!row) return null;
 
-      const summary = mapProductSummary(row);
-      const categoryId = row.categories?.id;
-      const categoryNode =
-        categoryId === undefined
-          ? null
-          : findCategoryById(await getCategoryTree(), String(categoryId));
+      return mapProductDetail(row, await getCategoryTree());
+    },
 
-      return {
-        ...summary,
-        attributes: mapAttributes(row.product_attribute_values),
-        brandHref: summary.brandSlug ? brandHref(summary.brandSlug) : null,
-        categoryHref: categoryNode?.href ?? null,
-        description: row.description,
-        images: toGallery(row.product_media),
-        publishedAt: row.published_at,
-        updatedAt: row.updated_at,
-        variants: mapVariants(row.product_variants),
-      } satisfies ProductDetail;
+    async getProductDetailsBySlugs(slugs) {
+      if (slugs.length === 0) return [];
+
+      const [result, categoryTree] = await Promise.all([
+        client
+          .from("products")
+          .select(PRODUCT_DETAIL_SELECT)
+          .in("slug", [...slugs])
+          .eq("status", "published")
+          .is("archived_at", null),
+        getCategoryTree(),
+      ]);
+
+      const rows = unwrap(result, "Could not load shortlisted products");
+      const bySlug = new Map(
+        (rows ?? []).map((row): [string, ProductDetail] => [
+          row.slug,
+          mapProductDetail(row, categoryTree),
+        ]),
+      );
+
+      // The caller's order is the visitor's own selection order, which must survive.
+      return slugs.flatMap((slug) => {
+        const detail = bySlug.get(slug);
+
+        return detail ? [detail] : [];
+      });
     },
 
     async getProductsBySlugs(slugs) {
@@ -877,15 +889,24 @@ export function createSupabaseCatalogRepository(
       }
 
       const from = (filters.page - 1) * pageSize;
-      const result = await query
-        .order("id", { ascending: false })
-        .range(from, from + pageSize - 1);
+
+      // The listing and its facets read the same scope, so they run together rather
+      // than the facets waiting for the listing to finish.
+      const [result, facetRows] = await Promise.all([
+        query
+          .order("id", { ascending: false })
+          .range(from, from + pageSize - 1),
+        loadFacetRows(scope),
+      ]);
 
       const data = unwrap(result, "Could not load catalog products");
       const total = result.count ?? 0;
 
       return {
-        facets: await loadFacets(scope),
+        facets: deriveCatalogFacets(facetRows, {
+          availability: scope.availability,
+          brandIds: scope.brandIds,
+        }),
         page: filters.page,
         pageCount: Math.max(1, Math.ceil(total / pageSize)),
         pageSize,
@@ -915,7 +936,7 @@ function mapPage(row: {
 }
 
 export function tryCreateSupabaseCatalogRepository(): CatalogRepository | null {
-  const client = createPublicCatalogClient();
+  const client = getPublicCatalogClient();
 
   return client ? createSupabaseCatalogRepository(client) : null;
 }

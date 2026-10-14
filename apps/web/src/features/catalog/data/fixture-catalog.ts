@@ -69,6 +69,9 @@ export const emptyCatalogRepository: CatalogRepository = {
   async getProductBySlug() {
     return null;
   },
+  async getProductDetailsBySlugs() {
+    return [];
+  },
   async getProductsBySlugs() {
     return [];
   },

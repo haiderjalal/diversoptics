@@ -224,6 +224,13 @@ export interface CatalogRepository {
   getCollections(): Promise<readonly CatalogCollection[]>;
   getCollectionBySlug(slug: string): Promise<CatalogCollection | null>;
   getProductBySlug(slug: string): Promise<ProductDetail | null>;
+  /**
+   * Full detail for each published product in the list, in the caller's order. It
+   * is one read, so a shortlist or an inquiry never pays a query per product.
+   */
+  getProductDetailsBySlugs(
+    slugs: readonly string[],
+  ): Promise<readonly ProductDetail[]>;
   getProductsBySlugs(
     slugs: readonly string[],
   ): Promise<readonly ProductSummary[]>;

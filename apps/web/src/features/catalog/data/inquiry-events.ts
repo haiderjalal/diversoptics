@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
-import { createPublicCatalogClient } from "@/lib/supabase/public";
+import { getPublicCatalogClient } from "@/lib/supabase/public";
 
 import type { InquirySnapshotItem } from "../domain/types";
 
@@ -71,7 +71,7 @@ export async function recordInquiryEvent(
 ): Promise<string | null> {
   if (input.items.length === 0) return null;
 
-  const client = createPublicCatalogClient();
+  const client = getPublicCatalogClient();
 
   if (!client) return null;
 

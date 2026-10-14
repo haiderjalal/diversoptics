@@ -2,7 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
-import { createPublicCatalogClient } from "@/lib/supabase/public";
+import { getPublicCatalogClient } from "@/lib/supabase/public";
 import { resolveDeploymentEnvironment } from "@/lib/config/site";
 
 import { resolveCatalogSource } from "../domain/catalog-source";
@@ -17,7 +17,7 @@ import { PUBLIC_CATALOG_CACHE_TAG } from "./public-catalog-cache";
  * null so the interface can say the fact is not confirmed yet.
  */
 async function loadStoreSettings(): Promise<StoreSettings | null> {
-  const client = createPublicCatalogClient();
+  const client = getPublicCatalogClient();
   const source = resolveCatalogSource(
     resolveDeploymentEnvironment(),
     client !== null,

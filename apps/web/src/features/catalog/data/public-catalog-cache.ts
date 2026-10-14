@@ -87,6 +87,11 @@ export function cachePublicCatalogRepository(
       ["public-catalog", "editorial-pages"],
       CACHE_OPTIONS,
     ),
+    getProductDetailsBySlugs: unstable_cache(
+      (slugs: readonly string[]) => repository.getProductDetailsBySlugs(slugs),
+      ["public-catalog", "product-details-by-slug"],
+      CACHE_OPTIONS,
+    ),
     getProductBySlug: unstable_cache(
       (slug: string) => repository.getProductBySlug(slug),
       ["public-catalog", "product"],

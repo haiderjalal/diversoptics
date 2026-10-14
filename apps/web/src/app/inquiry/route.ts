@@ -127,17 +127,11 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/shortlist", url), 303);
   }
 
-  const products = await repository.getProductsBySlugs(
+  // Variants decide whether a SKU in the link is real, so the detail read is the
+  // only read needed: one query covers every product in the selection.
+  const details = await repository.getProductDetailsBySlugs(
     selections.map((selection) => selection.slug),
   );
-
-  // Resolving details per product keeps variant validation honest; a summary
-  // does not carry the variant list.
-  const details = (
-    await Promise.all(
-      products.map((summary) => repository.getProductBySlug(summary.slug)),
-    )
-  ).filter((product): product is ProductDetail => product !== null);
 
   if (details.length === 0) {
     // Every requested product is unpublished or gone; send the visitor somewhere
